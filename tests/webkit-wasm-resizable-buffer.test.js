@@ -123,3 +123,47 @@ test('Wasm-backed resizable buffer remains usable after dropping the Memory refe
     });
   });
 });
+
+test('Wasm memory growth refreshes an existing typed-array view', async (t) => {
+  await withWebKit(async (page) => {
+    const result = await page.evaluate(() => {
+      if (typeof WebAssembly.Memory.prototype.toResizableBuffer !== 'function') return null;
+
+      // Allocation pressure mirrors the upstream JavaScriptCore regression test.
+      const memories = [];
+      for (let i = 0; i < 500; i++) {
+        try {
+          memories.push(new WebAssembly.Memory({ initial: 1, maximum: 100 }));
+        } catch {
+          break;
+        }
+      }
+
+      const memory = new WebAssembly.Memory({ initial: 1, maximum: 10 });
+      const buffer = memory.toResizableBuffer();
+      const view = new Uint32Array(buffer);
+      view[0] = 0xCAFEBABE;
+
+      memory.grow(1);
+
+      // Encourage allocator reuse without dereferencing stale native pointers.
+      for (let i = 0; i < 100; i++) {
+        const allocation = new ArrayBuffer(65536);
+        new Uint32Array(allocation).fill(0xDEADBEEF);
+      }
+
+      return {
+        viewLengthAfterGrow: view.length,
+        markerAfterGrow: view[0],
+        memoryLengthAfterGrow: memory.buffer.byteLength
+      };
+    });
+
+    if (result === null) return t.skip('Wasm resizable-buffer API unavailable in this WebKit build');
+    assert.deepEqual(result, {
+      viewLengthAfterGrow: 32768,
+      markerAfterGrow: 0xCAFEBABE,
+      memoryLengthAfterGrow: 2 * 65536
+    });
+  });
+});
