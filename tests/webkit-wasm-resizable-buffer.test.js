@@ -86,3 +86,40 @@ test('Wasm-backed fixed-length buffer detaches when memory grows', async (t) => 
     });
   });
 });
+
+test('Wasm-backed resizable buffer remains usable after dropping the Memory reference', async (t) => {
+  await withWebKit(async (page) => {
+    const result = await page.evaluate(() => {
+      let memory = new WebAssembly.Memory({ initial: 1, maximum: 3 });
+      if (typeof memory.toResizableBuffer !== 'function') return null;
+
+      const buffer = memory.toResizableBuffer();
+      const view = new Uint8Array(buffer);
+      view[123] = 0xa5;
+      memory = null;
+
+      // Allocation churn may exercise collection, but does not assume that GC ran.
+      const churn = [];
+      for (let i = 0; i < 24; i++) churn.push(new ArrayBuffer(64 * 1024));
+      churn.length = 0;
+
+      const beforeResize = {
+        byteLength: buffer.byteLength,
+        marker: new Uint8Array(buffer)[123]
+      };
+      buffer.resize(2 * 65536);
+      return {
+        beforeResize,
+        afterResizeLength: buffer.byteLength,
+        markerAfterResize: new Uint8Array(buffer)[123]
+      };
+    });
+
+    if (result === null) return t.skip('WebAssembly.Memory.toResizableBuffer unavailable in this WebKit build');
+    assert.deepEqual(result, {
+      beforeResize: { byteLength: 65536, marker: 0xa5 },
+      afterResizeLength: 2 * 65536,
+      markerAfterResize: 0xa5
+    });
+  });
+});
