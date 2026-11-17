@@ -51,7 +51,7 @@ test('Wasm-backed resizable buffer rejects invalid sizes without corrupting stat
   });
 });
 
-test('Wasm-backed resizable buffer remains usable after fixed-length conversion', async (t) => {
+test('Wasm-backed fixed-length buffer detaches when memory grows', async (t) => {
   await withWebKit(async (page) => {
     const result = await page.evaluate(() => {
       const memory = new WebAssembly.Memory({ initial: 1, maximum: 4 });
@@ -60,26 +60,29 @@ test('Wasm-backed resizable buffer remains usable after fixed-length conversion'
 
       const resizable = memory.toResizableBuffer();
       const fixed = memory.toFixedLengthBuffer();
-      const oldBufferDetached = resizable.byteLength === 0;
-      const fixedIsCurrent = fixed === memory.buffer;
-      const byteLengthBeforeGrowth = fixed.byteLength;
+      const oldResizableDetached = resizable.byteLength === 0;
+      const fixedIsCurrentBeforeGrowth = fixed === memory.buffer;
+      const fixedLengthBeforeGrowth = fixed.byteLength;
       memory.grow(1);
+      const currentBuffer = memory.buffer;
       return {
-        oldBufferDetached,
-        fixedIsCurrent,
-        byteLengthBeforeGrowth,
-        byteLengthAfterGrowth: memory.buffer.byteLength,
-        fixedLengthAfterGrowth: fixed.byteLength
+        oldResizableDetached,
+        fixedIsCurrentBeforeGrowth,
+        fixedLengthBeforeGrowth,
+        fixedBufferDetachedAfterGrowth: fixed.byteLength === 0,
+        currentBufferLengthAfterGrowth: currentBuffer.byteLength,
+        fixedIsCurrentAfterGrowth: fixed === currentBuffer
       };
     });
 
     if (result === null) return t.skip('WebAssembly memory buffer conversion APIs unavailable');
     assert.deepEqual(result, {
-      oldBufferDetached: true,
-      fixedIsCurrent: true,
-      byteLengthBeforeGrowth: 65536,
-      byteLengthAfterGrowth: 131072,
-      fixedLengthAfterGrowth: 65536
+      oldResizableDetached: true,
+      fixedIsCurrentBeforeGrowth: true,
+      fixedLengthBeforeGrowth: 65536,
+      fixedBufferDetachedAfterGrowth: true,
+      currentBufferLengthAfterGrowth: 131072,
+      fixedIsCurrentAfterGrowth: false
     });
   });
 });
