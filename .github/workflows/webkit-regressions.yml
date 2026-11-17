@@ -11,8 +11,13 @@ permissions:
 
 jobs:
   webkit:
+    name: WebKit regression (Playwright ${{ matrix.playwright-version }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        playwright-version: ['1.56.1', '1.65.1']
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -20,9 +25,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install dependencies
-        run: npm install
-      - name: Install Playwright WebKit
+      - name: Install Playwright version
+        run: npm install --no-save --package-lock=false playwright@${{ matrix.playwright-version }}
+      - name: Record Playwright version
+        run: npx playwright --version
+      - name: Install matching WebKit
         run: npx playwright install --with-deps webkit
       - name: Run regression suite
         run: npm test
